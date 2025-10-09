@@ -90,27 +90,34 @@ An APPLE
 A Apple
 An Apple
 
+!!!!!!!!!!!!!!!!!!!!!!
 A a apple
 A an apple
 
+!!!!!!!!!!!!!!!!!!!!!!
 a A apple
 a An apple
 
+!!!!!!!!!!!!!!!!!!!!!!
 an hat
 a hat
 
 a hour
 an hour
 
+!!!!!!!!!!!!!!!!!!!!!!
 a a a a a
 a a a a a
 
+!!!!!!!!!!!!!!!!!!!!!!
 A A A A A
 A A A A A
 
+!!!!!!!!!!!!!!!!!!!!!!
 a or b
 a or b
 
+!!!!!!!!!!!!!!!!!!!!!!
 a and the
 a and the
 
@@ -125,27 +132,34 @@ Good morning, Mr Harold Wilson
 one(low)two(cap)three(up)
 one Two THREE
 
+!!!!!!!!!!!!!!!!!!!!!!
 one (up) two (up) three (cap, 3)
 One Two Three
 
+!!!!!!!!!!!!!!!!!!!!!!
 Abc (L(low)O(low)W(low))
 Abc (l o w )
 
 hello (up) world (cap)
 HELLO World
 
+!!!!!!!!!!!!!!!!!!!!!!
 done             (          up     , 1     )      
 done             (          up     ,  7      )  
 
+!!!!!!!!!!!!!!!!!!!!!!
 one two (cap, a (hex) (bin))
 One Two
 
+!!!!!!!!!!!!!!!!!!!!!!
 me (up, 10(bin))
 ME
 
+!!!!!!!!!!!!!!!!!!!!!!
 WORD (LOW(low))
 word
 
+??????????????????????
 it (cap) was a 'amazing' (cap) experience   ?!
 It was an 'Amazing' experience?!
 
