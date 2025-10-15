@@ -6,12 +6,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	//"unicode"
 )
 
 func main() {
+	// Получаем все аргументы командной строки, начиная с первого (первый аргумент — это сам ввод)
 	input := strings.Join(os.Args[1:], " ")
-
 	output := processText(input)
 	fmt.Println(output)
 }
@@ -36,21 +35,21 @@ func processText(text string) string {
 func applyTransformations(tokens []string) []string {
 	var result []string
 
+	// Ищем команду и применяем к нужному числу слов
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
 
-		// Команда?
+		// Если нашли команду в скобках
 		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
-			// Разбираем (cmd) или (cmd, N)
+			// Разбираем команду
 			cmd, count := parseCommand(t)
-			if count > len(result) {
-				count = len(result)
-			}
-
-			for j := 1; j <= count; j++ {
+			// Применяем команду только к нужным словам в результате
+			// Применяем к последним словам в result
+			for j := 1; j <= count && len(result)-j >= 0; j++ {
 				index := len(result) - j
 				word := result[index]
 
+				// Применяем команду
 				switch cmd {
 				case "hex":
 					if num, err := strconv.ParseInt(word, 16, 64); err == nil {
@@ -121,6 +120,7 @@ func reconstruct(tokens []string) string {
 		// Спецзнаки без пробела перед ними
 		if isPunctuation(t) {
 			sb.WriteString(t)
+			// Добавляем пробел только если следующий токен не знак препинания
 			if i+1 < len(tokens) && !isPunctuation(tokens[i+1]) {
 				sb.WriteString(" ")
 			}
