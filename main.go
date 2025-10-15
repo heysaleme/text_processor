@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+		"math/big"
+
 	"strconv"
 	"strings"
 	"unicode"
@@ -11,14 +13,13 @@ import (
 )
 
 func main() {
-	// Получаем все аргументы командной строки, начиная с первого (первый аргумент — это сам ввод)
 	input := strings.Join(os.Args[1:], " ")
 	output := processText(input)
 	fmt.Println(output)
 }
 
 func processText(text string) string {
-	// Токенизация: разбиваем строку на слова, команды и знаки препинания
+	// Токенизация
 re := regexp.MustCompile(`'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]|\(\w+(?:,\s*\d+)?\)`)
 	tokens := re.FindAllString(text, -1)
 
@@ -32,34 +33,37 @@ re := regexp.MustCompile(`'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]|\(\w+(?:,\s*\d+)?\)`)
 func applyTransformations(tokens []string) []string {
 	var result []string
 
-	// Ищем команду и применяем к нужному числу слов
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
 
-		// Если нашли команду в скобках
+		// ищем флажки
 		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
-			// Разбираем команду
 			cmd, count := parseCommand(t)
-			// Применяем команду только к нужным словам в результате
-			// Применяем к последним словам в result
+
 			for j := 1; j <= count && len(result)-j >= 0; j++ {
 				index := len(result) - j
 				word := result[index]
 
-				// Применяем команду
 				switch cmd {
 				case "hex":
-					if num, err := strconv.ParseInt(word, 16, 64); err == nil {
-						result[index] = fmt.Sprintf("%d", num)
+					//big.Int вместо ParseInt (для длинных чисел)
+					bigNum := new(big.Int)
+					if _, ok := bigNum.SetString(word, 16); ok {
+						result[index] = bigNum.String()
 					}
+
 				case "bin":
-					if num, err := strconv.ParseInt(word, 2, 64); err == nil {
-						result[index] = fmt.Sprintf("%d", num)
+					bigNum := new(big.Int)
+					if _, ok := bigNum.SetString(word, 2); ok {
+						result[index] = bigNum.String()
 					}
+
 				case "up":
 					result[index] = strings.ToUpper(word)
+
 				case "low":
 					result[index] = strings.ToLower(word)
+
 				case "cap":
 					if len(word) > 0 {
 						result[index] = strings.ToUpper(string(word[0])) + word[1:]
@@ -89,25 +93,21 @@ func parseCommand(token string) (cmd string, count int) {
 func fixArticles(tokens []string) []string {
 	result := []string{}
 
-	// базовый набор "гласных" по первой букве
 	vowels := "aeiouAEIOU"
 
-	// фонетические исключения, требующие "an" несмотря на первую букву (hour, honest...)
 	anExceptions := map[string]bool{
 		"hour": true, "honest": true, "heir": true, "honour": true, "honor": true,
 	}
 
-	// фонетические исключения, требующие "a" несмотря на первую гласную букву (university, user...)
 	aExceptions := map[string]bool{
 		"university": true, "unit": true, "unicorn": true, "user": true, "european": true,
 	}
 
-	// стоп-слова, после которых не меняем артикль
+	// стоп-слова
 	stopwords := map[string]bool{
 		"and": true, "or": true, "the": true, "a": true, "an": true, "of": true, "for": true,
 	}
 
-	// helper: вернуть первое буквенное rune в next (или 0)
 	firstLetter := func(next string) rune {
 		for _, r := range next {
 			if unicode.IsLetter(r) {
@@ -119,9 +119,8 @@ func fixArticles(tokens []string) []string {
 
 	for i := 0; i < len(tokens); i++ {
 		word := tokens[i]
-		//lowerWord := strings.ToLower(word)
 
-		// обрабатываем только если текущий токен — "a" или "an" (любого регистра)
+		// только при "a" или "an" 
 		if (strings.EqualFold(word, "a") || strings.EqualFold(word, "an")) && i+1 < len(tokens) {
 			// ищем следующий значащий токен (пропуская пунктуацию и кавычки)
 			j := i + 1
@@ -137,7 +136,6 @@ func fixArticles(tokens []string) []string {
 			next := tokens[j]
 			nextLower := strings.ToLower(next)
 
-			// если следующее — стопслово, не трогаем
 			if stopwords[nextLower] {
 				result = append(result, word)
 				continue
@@ -260,9 +258,6 @@ func reconstruct(tokens []string) string {
 
 	return strings.TrimSpace(sb.String())
 }
-
-
-
 
 
 func isPunctuation(s string) bool {
