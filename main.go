@@ -2,28 +2,47 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"regexp"
-		"math/big"
 
 	"strconv"
 	"strings"
 	"unicode"
-
 )
 
 func main() {
-	input := strings.Join(os.Args[1:], " ")
-	output := processText(input)
-	fmt.Println(output)
-}
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: go run . <input.txt> <output.txt>")
+		return
+	}
 
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
+
+	// читаем текст из входного файла
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Println("Error reading input file:", err)
+		return
+	}
+
+	text := string(data)
+	output := processText(text)
+
+	// записываем результат в выходной файл
+	err = os.WriteFile(outputFile, []byte(output), 0644)
+	if err != nil {
+		fmt.Println("Error writing output file:", err)
+		return
+	}
+
+	fmt.Println("✅ Result written to", outputFile)
+}
 func processText(text string) string {
 	// Токенизация
-re := regexp.MustCompile(`'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]|\(\w+(?:,\s*\d+)?\)`)
+	re := regexp.MustCompile(`'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]|\(\w+(?:,\s*\d+)?\)`)
 	tokens := re.FindAllString(text, -1)
-
-
 
 	tokens = applyTransformations(tokens)
 	tokens = fixArticles(tokens)
@@ -120,7 +139,7 @@ func fixArticles(tokens []string) []string {
 	for i := 0; i < len(tokens); i++ {
 		word := tokens[i]
 
-		// только при "a" или "an" 
+		// только при "a" или "an"
 		if (strings.EqualFold(word, "a") || strings.EqualFold(word, "an")) && i+1 < len(tokens) {
 			// ищем следующий значащий токен (пропуская пунктуацию и кавычки)
 			j := i + 1
@@ -192,73 +211,69 @@ func fixArticles(tokens []string) []string {
 	return result
 }
 
-
-
-
 func reconstruct(tokens []string) string {
 	var sb strings.Builder
 	insideQuotes := false
 
 	for i, t := range tokens {
 		// пунктуация
-        if isPunctuation(t) || t == "..." {
-            // убрать пробел перед знаком
-            s := sb.String()
-            if strings.HasSuffix(s, " ") {
-                sb.Reset()
-                sb.WriteString(strings.TrimRight(s, " "))
-            }
-            sb.WriteString(t)
-            // пробел после, если следующий — слово
-            if i+1 < len(tokens) {
-                nxt := tokens[i+1]
-                if !isPunctuation(nxt) && nxt != "..." && nxt != "'" {
-                    sb.WriteString(" ")
-                }
-            }
-            continue
-        }
+		if isPunctuation(t) || t == "..." {
+			// убрать пробел перед знаком
+			s := sb.String()
+			if strings.HasSuffix(s, " ") {
+				sb.Reset()
+				sb.WriteString(strings.TrimRight(s, " "))
+			}
+			sb.WriteString(t)
+			// пробел после, если следующий — слово
+			if i+1 < len(tokens) {
+				nxt := tokens[i+1]
+				if !isPunctuation(nxt) && nxt != "..." && nxt != "'" {
+					sb.WriteString(" ")
+				}
+			}
+			continue
+		}
 
-        // кавычки
-        if t == "'" {
-            if insideQuotes {
-                // закрывающая кавычка — убрать пробел перед ней
-                s := sb.String()
-                if strings.HasSuffix(s, " ") {
-                    sb.Reset()
-                    sb.WriteString(strings.TrimRight(s, " "))
-                }
-                sb.WriteString("'")
-                insideQuotes = false
-            } else {
-                // открывающая кавычка — пробел перед ней, если нужно
-                if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
-                    sb.WriteString(" ")
-                }
-                sb.WriteString("'")
-                insideQuotes = true
-            }
-            continue
-        }
+		// кавычки
+		if t == "'" {
+			if insideQuotes {
+				// закрывающая кавычка — убрать пробел перед ней
+				s := sb.String()
+				if strings.HasSuffix(s, " ") {
+					sb.Reset()
+					sb.WriteString(strings.TrimRight(s, " "))
+				}
+				sb.WriteString("'")
+				insideQuotes = false
+			} else {
+				// открывающая кавычка — пробел перед ней, если нужно
+				if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
+					sb.WriteString(" ")
+				}
+				sb.WriteString("'")
+				insideQuotes = true
+			}
+			continue
+		}
 
-        // обычное слово
-        word := t
-        if insideQuotes {
-            // убираем пробел в начале слова после открывающей кавычки
-            word = strings.TrimLeft(word, " ")
-        }
+		// обычное слово
+		word := t
+		if insideQuotes {
+			// убираем пробел в начале слова после открывающей кавычки
+			word = strings.TrimLeft(word, " ")
+		}
 
-        // пробел между словами (кроме сразу после открывающей кавычки)
-        if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") && (!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
-            sb.WriteString(" ")
-        }
+		// пробел между словами (кроме сразу после открывающей кавычки)
+		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") && (!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
+			sb.WriteString(" ")
+		}
 
-        sb.WriteString(word)
+		sb.WriteString(word)
 	}
 
 	return strings.TrimSpace(sb.String())
 }
-
 
 func isPunctuation(s string) bool {
 	return s == "." || s == "," || s == "!" || s == "?" || s == ":" || s == ";"
