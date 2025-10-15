@@ -1,25 +1,122 @@
-In this project you will use some of your old functions made in your old repository. You will use them with the objective of making a simple text completion/editing/auto-correction tool.
+Отлично 💪
 
-The tool you are about to build will receive as arguments the name of a file containing a text that needs some modifications (the input) and the name of the file the modified text should be placed in (the output). Next is a list of possible modifications that your program should execute:
+## 📘 go-reloaded
 
-Every instance of (hex) should replace the word before with the decimal version of the word (in this case the word will always be a hexadecimal number). (Ex: "1E (hex) files were added" -> "30 files were added")
+**go-reloaded** — это утилита на Go, которая «пересобирает» текст:
+исправляет пробелы и запятые, корректирует артикли **a/an**,
+и применяет встроенные команды форматирования вроде
+`(up)`, `(low)`, `(cap)`, `(bin)`, `(hex)` прямо внутри текста.
 
-Every instance of (bin) should replace the word before with the decimal version of the word (in this case the word will always be a binary number). (Ex: "It has been 10 (bin) years" -> "It has been 2 years")
+---
 
-Every instance of (up) converts the word before with the Uppercase version of it. (Ex: "Ready, set, go (up) !" -> "Ready, set, GO!")
+### ✨ Возможности
 
-Every instance of (low) converts the word before with the Lowercase version of it. (Ex: "I should stop SHOUTING (low)" -> "I should stop shouting")
+* 🧹 **Нормализует пробелы и пунктуацию**
+  → убирает лишние пробелы перед знаками препинания
+  → ставит пробел после запятых и точек, если нужно
 
-Every instance of (cap) converts the word before with the capitalized version of it. (Ex: "Welcome to the Brooklyn bridge (cap)" -> "Welcome to the Brooklyn Bridge")
+* 🗣️ **Исправляет артикли**
+  → автоматически превращает `a apple` → `an apple`
+  → и наоборот `an hat` → `a hat`
 
-For (low), (up), (cap) if a number appears next to it, like so: (low, <number>) it turns the previously specified number of words in lowercase, uppercase or capitalized accordingly. (Ex: "This is so exciting (up, 2)" -> "This is SO EXCITING")
+* 🔠 **Поддерживает команды форматирования**
+  Используются скобочные команды `(команда, количество_слов)`:
 
-Every instance of the punctuations ., ,, !, ?, : and ; should be close to the previous word and with space apart from the next one. (Ex: "I was sitting over there ,and then BAMM !!" -> "I was sitting over there, and then BAMM!!").
+  * `(up)` — преобразует в верхний регистр
+  * `(low)` — в нижний
+  * `(cap)` — делает первую букву заглавной
+  * `(hex)` — преобразует шестнадцатеричное число в десятичное
+  * `(bin)` — преобразует бинарное число в десятичное
+  * Можно указать число, например `(up, 3)` — применить к трём последним словам
 
-Except if there are groups of punctuation like: ... or !?. In this case the program should format the text as in the following example: "I was thinking ... You were right" -> "I was thinking... You were right".
+* 🧩 **Работает прямо из терминала**
+  Не требует сторонних библиотек.
 
-The punctuation mark ' will always be found with another instance of it and they should be placed to the right and left of the word in the middle of them, without any spaces. (Ex: "I am exactly how they describe me: ' awesome '" -> "I am exactly how they describe me: 'awesome'")
+---
 
-If there are more than one word between the two ' ' marks, the program should place the marks next to the corresponding words (Ex: "As Elton John said: ' I am the most well-known homosexual in the world '" -> "As Elton John said: 'I am the most well-known homosexual in the world'")
+### 🛠️ Технологии
 
-Every instance of a should be turned into an if the next word begins with a vowel (a, e, i, o, u) or a h. (Ex: "There it was. A amazing rock!" -> "There it was. An amazing rock!").
+* Язык: **Go (Golang)**
+* Использует стандартные пакеты:
+
+  * `fmt`
+  * `os`
+  * `regexp`
+  * `strconv`
+  * `strings`
+
+---
+
+### 🚀 Установка и запуск
+
+#### 1️⃣ Клонировать репозиторий
+
+```bash
+git clone https://github.com/<твое_имя_пользователя>/go-reloaded.git
+cd go-reloaded
+```
+
+#### 2️⃣ Запустить без сборки
+
+```bash
+go run . "harold wilson (cap, 2) : ' I am a optimist ,but a optimist who carries a raincoat . '"
+```
+
+**Результат:**
+
+```
+Harold Wilson: 'I am an optimist, but an optimist who carries a raincoat.'
+```
+
+#### 3️⃣ Или собрать бинарник
+
+```bash
+go build -o go-reloaded
+./go-reloaded "Ready, set, go (up)!"
+```
+
+**Результат:**
+
+```
+Ready, set, GO!
+```
+
+---
+
+### 📋 Примеры использования
+
+| Ввод                                           | Результат                        |
+| ---------------------------------------------- | -------------------------------- |
+| `"it (cap) was a amazing (cap) experience ?!"` | `It was an Amazing experience?!` |
+| `"A a apple"`                                  | `A an apple`                     |
+| `"an hat"`                                     | `a hat`                          |
+| `"Hello (up)"`                                 | `HELLO`                          |
+| `"1101 (bin)"`                                 | `13`                             |
+| `"1f (hex)"`                                   | `31`                             |
+
+---
+
+### ⚙️ Логика работы
+
+Программа проходит через несколько этапов:
+
+1. **Токенизация** — разбивает ввод на слова, команды и знаки препинания
+2. **Применение команд** — трансформирует последние слова в зависимости от `(up)`, `(cap)` и т.п.
+3. **Исправление артиклей** — корректирует `a/an` с учётом контекста
+4. **Реконструкция текста** — аккуратно восстанавливает предложение, убирая и добавляя пробелы по правилам
+
+---
+
+### ⚠️ Примечания
+
+* Команды `(cap, n)` и т.п. применяются **к уже обработанным** словам.
+* Текст с кавычками `'...'` лучше передавать в **одинарных кавычках**, чтобы shell не спутал:
+
+  ```bash
+  go run . 'harold wilson (cap, 2) : " I am a optimist ,but a optimist who carries a raincoat . "'
+  ```
+* Можно также передавать строку через файл:
+
+  ```bash
+  go run . "$(cat input.txt)"
+  ```
