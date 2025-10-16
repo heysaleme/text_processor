@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"os"
 	"regexp"
-
 	"strconv"
 	"strings"
 	"unicode"
@@ -20,7 +19,6 @@ func main() {
 	inputFile := os.Args[1]
 	outputFile := os.Args[2]
 
-	// читаем текст из входного файла
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Println("Error reading input file:", err)
@@ -30,7 +28,6 @@ func main() {
 	text := string(data)
 	output := processText(text)
 
-	// записываем результат в выходной файл
 	err = os.WriteFile(outputFile, []byte(output), 0644)
 	if err != nil {
 		fmt.Println("Error writing output file:", err)
@@ -39,62 +36,350 @@ func main() {
 
 	fmt.Println("✅ Result written to", outputFile)
 }
+
 func processText(text string) string {
-	// Токенизация
-	re := regexp.MustCompile(`'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]|\(\w+(?:,\s*\d+)?\)`)
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+
+	re := regexp.MustCompile(`\([^)]+\)|\n|'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]`)
 	tokens := re.FindAllString(text, -1)
 
-	tokens = applyTransformations(tokens)
 	tokens = fixArticles(tokens)
+	tokens = applyTransformations(tokens)
 	return reconstruct(tokens)
 }
 
+func isWordToken(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			return true
+		}
+	}
+	return false
+}
+
 func applyTransformations(tokens []string) []string {
-	var result []string
+	result := make([]string, len(tokens))
+	copy(result, tokens)
 
-	for i := 0; i < len(tokens); i++ {
-		t := tokens[i]
+	// Разделяем токены по строкам
+	lines := splitTokensByLines(result)
 
-		// ищем флажки
+	// Обрабатываем каждую строку отдельно
+	var finalTokens []string
+	for _, lineTokens := range lines {
+		processedLine := processLine(lineTokens)
+		finalTokens = append(finalTokens, processedLine...)
+	}
+
+	return finalTokens
+}
+
+// Разделяет токены по строкам
+func splitTokensByLines(tokens []string) [][]string {
+	var lines [][]string
+	var currentLine []string
+
+	for _, token := range tokens {
+		currentLine = append(currentLine, token)
+		if token == "\n" {
+			lines = append(lines, currentLine)
+			currentLine = []string{}
+		}
+	}
+
+	// Добавляем последнюю строку, если она не пустая
+	if len(currentLine) > 0 {
+		lines = append(lines, currentLine)
+	}
+
+	return lines
+}
+
+func processLine(tokens []string) []string {
+	result := make([]string, len(tokens))
+	copy(result, tokens)
+
+	// Собираем команды в этой строке в порядке появления
+	commands := []struct {
+		index int
+		cmd   string
+		count int
+	}{}
+
+	for i := 0; i < len(result); i++ {
+		t := result[i]
 		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
 			cmd, count := parseCommand(t)
+			commands = append(commands, struct {
+				index int
+				cmd   string
+				count int
+			}{i, cmd, count})
+			// Удаляем команду из результата
+			result[i] = ""
+		}
+	}
 
-			for j := 1; j <= count && len(result)-j >= 0; j++ {
-				index := len(result) - j
-				word := result[index]
+	// Применяем команды в порядке появления только к словам в этой строке
+	for _, command := range commands {
+		applied := 0
+		j := command.index - 1
 
-				switch cmd {
-				case "hex":
-					//big.Int вместо ParseInt (для длинных чисел)
-					bigNum := new(big.Int)
-					if _, ok := bigNum.SetString(word, 16); ok {
-						result[index] = bigNum.String()
+		for applied < command.count && j >= 0 {
+			// Если дошли до начала строки - останавливаемся
+			if j < 0 {
+				break
+			}
+
+			// Пропускаем пустые строки (удаленные команды) и не-слова
+			if result[j] == "" || !isWordToken(result[j]) {
+				j--
+				continue
+			}
+
+			word := result[j]
+
+			switch strings.ToLower(command.cmd) {
+			case "hex":
+				bigNum := new(big.Int)
+				if _, ok := bigNum.SetString(word, 16); ok {
+					result[j] = bigNum.String()
+				}
+			case "bin":
+				bigNum := new(big.Int)
+				if _, ok := bigNum.SetString(word, 2); ok {
+					result[j] = bigNum.String()
+				}
+			case "up":
+				result[j] = strings.ToUpper(word)
+			case "low":
+				result[j] = strings.ToLower(word)
+			case "cap":
+				if len(word) > 0 {
+					runes := []rune(word)
+					runes[0] = unicode.ToUpper(runes[0])
+					for k := 1; k < len(runes); k++ {
+						runes[k] = unicode.ToLower(runes[k])
 					}
+					result[j] = string(runes)
+				}
+			}
+			applied++
+			j--
+		}
+	}
 
-				case "bin":
-					bigNum := new(big.Int)
-					if _, ok := bigNum.SetString(word, 2); ok {
-						result[index] = bigNum.String()
+	// Убираем пустые строки (удаленные команды)
+	var finalResult []string
+	for _, token := range result {
+		if token != "" {
+			finalResult = append(finalResult, token)
+		}
+	}
+
+	return finalResult
+}
+
+func fixArticles(tokens []string) []string {
+	result := make([]string, len(tokens))
+	copy(result, tokens)
+
+	vowels := "aeiouAEIOU"
+
+	anExceptions := map[string]bool{
+		"hour": true, "honest": true, "heir": true, "honour": true, "honor": true,
+	}
+
+	aExceptions := map[string]bool{
+		"university": true, "unit": true, "unicorn": true, "user": true, "european": true,
+	}
+
+	firstLetter := func(next string) rune {
+		for _, r := range next {
+			if unicode.IsLetter(r) {
+				return r
+			}
+		}
+		return 0
+	}
+
+	for i := 0; i < len(result); i++ {
+		word := result[i]
+
+		// Пропускаем команды
+		if strings.HasPrefix(word, "(") && strings.HasSuffix(word, ")") {
+			continue
+		}
+
+		// Обрабатываем все варианты артиклей
+		if (word == "a" || word == "A" || word == "an" || word == "An") && i+1 < len(result) {
+			j := i + 1
+
+			// Ищем следующее слово в той же строке (останавливаемся на \n)
+			for j < len(result) && result[j] != "\n" &&
+				(isPunctuation(result[j]) || result[j] == "'" ||
+					(strings.HasPrefix(result[j], "(") && strings.HasSuffix(result[j], ")")) ||
+					strings.TrimSpace(result[j]) == "") {
+				j++
+			}
+
+			// Если дошли до конца или нашли перевод строки - не меняем артикль
+			if j >= len(result) || result[j] == "\n" {
+				continue
+			}
+
+			next := result[j]
+
+			// Если следующее слово тоже "a" или "an" - не меняем текущий артикль
+			if next == "a" || next == "A" || next == "an" || next == "An" {
+				continue
+			}
+
+			nextLower := strings.ToLower(next)
+
+			fl := firstLetter(next)
+			if fl == 0 {
+				continue
+			}
+
+			// Проверяем исключения
+			if anExceptions[nextLower] {
+				if word == "a" || word == "A" {
+					if word == "A" {
+						result[i] = "An"
+					} else {
+						result[i] = "an"
 					}
+				}
+				continue
+			}
+			if aExceptions[nextLower] {
+				if word == "an" || word == "An" {
+					if word == "An" {
+						result[i] = "A"
+					} else {
+						result[i] = "a"
+					}
+				}
+				continue
+			}
 
-				case "up":
-					result[index] = strings.ToUpper(word)
-
-				case "low":
-					result[index] = strings.ToLower(word)
-
-				case "cap":
-					if len(word) > 0 {
-						result[index] = strings.ToUpper(string(word[0])) + word[1:]
+			// По первой букве - используем переменную vowels
+			if strings.ContainsRune(vowels, fl) {
+				if word == "a" || word == "A" {
+					if word == "A" {
+						result[i] = "An"
+					} else {
+						result[i] = "an"
+					}
+				}
+			} else {
+				if word == "an" || word == "An" {
+					if word == "An" {
+						result[i] = "A"
+					} else {
+						result[i] = "a"
 					}
 				}
 			}
-		} else {
-			result = append(result, t)
 		}
 	}
 
 	return result
+}
+
+func reconstruct(tokens []string) string {
+	var sb strings.Builder
+	insideQuotes := false
+	sentenceStart := true
+
+	for i, t := range tokens {
+		if t == "\n" {
+			s := sb.String()
+			if strings.HasSuffix(s, " ") {
+				sb.Reset()
+				sb.WriteString(strings.TrimRight(s, " "))
+			}
+			sb.WriteString("\n")
+			sentenceStart = true
+			continue
+		}
+
+		// пунктуация
+		if isPunctuation(t) || t == "..." {
+			// убрать пробел перед знаком
+			s := sb.String()
+			if strings.HasSuffix(s, " ") {
+				sb.Reset()
+				sb.WriteString(strings.TrimRight(s, " "))
+			}
+			sb.WriteString(t)
+
+			// После пунктуации ставим пробел, если следующий токен - слово
+			if i+1 < len(tokens) && isWordToken(tokens[i+1]) {
+				sb.WriteString(" ")
+			}
+			sentenceStart = (t == "." || t == "!" || t == "?" || t == "...")
+			continue
+		}
+
+		// кавычки
+		if t == "'" {
+			if insideQuotes {
+				s := sb.String()
+				if strings.HasSuffix(s, " ") {
+					sb.Reset()
+					sb.WriteString(strings.TrimRight(s, " "))
+				}
+				sb.WriteString("'")
+				insideQuotes = false
+			} else {
+				if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
+					sb.WriteString(" ")
+				}
+				sb.WriteString("'")
+				insideQuotes = true
+			}
+			continue
+		}
+
+		// обычное слово
+		word := t
+		if insideQuotes {
+			word = strings.TrimLeft(word, " ")
+		}
+
+		// Если это начало предложения и слово - строчный артикль, делаем первую букву заглавной
+		if sentenceStart && (word == "a" || word == "an") {
+			if word == "a" {
+				word = "A"
+			} else if word == "an" {
+				word = "An"
+			}
+		}
+
+		// Добавляем пробел между словами, но не если предыдущий токен был пунктуацией (кроме некоторых случаев)
+		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
+			// Проверяем предыдущий токен
+			if i > 0 {
+				prevToken := tokens[i-1]
+				// Если предыдущий токен - пунктуация, которая требует пробела перед словом
+				if isPunctuation(prevToken) && prevToken != ":" && prevToken != ";" {
+					sb.WriteString(" ")
+				} else if !isPunctuation(prevToken) && prevToken != "'" && prevToken != "\n" {
+					// Если предыдущий токен - слово, ставим пробел
+					sb.WriteString(" ")
+				}
+			} else if !insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'") {
+				sb.WriteString(" ")
+			}
+		}
+
+		sb.WriteString(word)
+		sentenceStart = false
+	}
+
+	return strings.TrimSpace(sb.String())
 }
 
 func parseCommand(token string) (cmd string, count int) {
@@ -109,172 +394,24 @@ func parseCommand(token string) (cmd string, count int) {
 	}
 	return
 }
-func fixArticles(tokens []string) []string {
-	result := []string{}
-
-	vowels := "aeiouAEIOU"
-
-	anExceptions := map[string]bool{
-		"hour": true, "honest": true, "heir": true, "honour": true, "honor": true,
-	}
-
-	aExceptions := map[string]bool{
-		"university": true, "unit": true, "unicorn": true, "user": true, "european": true,
-	}
-
-	// стоп-слова
-	stopwords := map[string]bool{
-		"and": true, "or": true, "the": true, "a": true, "an": true, "of": true, "for": true,
-	}
-
-	firstLetter := func(next string) rune {
-		for _, r := range next {
-			if unicode.IsLetter(r) {
-				return r
-			}
-		}
-		return 0
-	}
-
-	for i := 0; i < len(tokens); i++ {
-		word := tokens[i]
-
-		// только при "a" или "an"
-		if (strings.EqualFold(word, "a") || strings.EqualFold(word, "an")) && i+1 < len(tokens) {
-			// ищем следующий значащий токен (пропуская пунктуацию и кавычки)
-			j := i + 1
-			for j < len(tokens) && (isPunctuation(tokens[j]) || tokens[j] == "'" || strings.TrimSpace(tokens[j]) == "") {
-				j++
-			}
-			if j >= len(tokens) {
-				// дальше ничего — не меняем
-				result = append(result, word)
-				continue
-			}
-
-			next := tokens[j]
-			nextLower := strings.ToLower(next)
-
-			if stopwords[nextLower] {
-				result = append(result, word)
-				continue
-			}
-
-			// возьмём первую букву следующего значащего токена
-			fl := firstLetter(nextLower)
-			if fl == 0 {
-				result = append(result, word)
-				continue
-			}
-
-			// сначала проверим явные исключения по слову целиком
-			if anExceptions[nextLower] {
-				// должно быть "an"
-				if word == "A" || word == "An" {
-					result = append(result, "An")
-				} else {
-					result = append(result, "an")
-				}
-				continue
-			}
-			if aExceptions[nextLower] {
-				// должно быть "a"
-				if word == "A" || word == "An" {
-					result = append(result, "A")
-				} else {
-					result = append(result, "a")
-				}
-				continue
-			}
-
-			// по первой букве: если гласная -> an, иначе a
-			if strings.ContainsRune(vowels, fl) {
-				if word == "A" || word == "An" {
-					result = append(result, "An")
-				} else {
-					result = append(result, "an")
-				}
-			} else {
-				if word == "A" || word == "An" {
-					result = append(result, "A")
-				} else {
-					result = append(result, "a")
-				}
-			}
-			continue
-		}
-
-		// во всех остальных случаях просто копируем токен
-		result = append(result, word)
-	}
-
-	return result
-}
-
-func reconstruct(tokens []string) string {
-	var sb strings.Builder
-	insideQuotes := false
-
-	for i, t := range tokens {
-		// пунктуация
-		if isPunctuation(t) || t == "..." {
-			// убрать пробел перед знаком
-			s := sb.String()
-			if strings.HasSuffix(s, " ") {
-				sb.Reset()
-				sb.WriteString(strings.TrimRight(s, " "))
-			}
-			sb.WriteString(t)
-			// пробел после, если следующий — слово
-			if i+1 < len(tokens) {
-				nxt := tokens[i+1]
-				if !isPunctuation(nxt) && nxt != "..." && nxt != "'" {
-					sb.WriteString(" ")
-				}
-			}
-			continue
-		}
-
-		// кавычки
-		if t == "'" {
-			if insideQuotes {
-				// закрывающая кавычка — убрать пробел перед ней
-				s := sb.String()
-				if strings.HasSuffix(s, " ") {
-					sb.Reset()
-					sb.WriteString(strings.TrimRight(s, " "))
-				}
-				sb.WriteString("'")
-				insideQuotes = false
-			} else {
-				// открывающая кавычка — пробел перед ней, если нужно
-				if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
-					sb.WriteString(" ")
-				}
-				sb.WriteString("'")
-				insideQuotes = true
-			}
-			continue
-		}
-
-		// обычное слово
-		word := t
-		if insideQuotes {
-			// убираем пробел в начале слова после открывающей кавычки
-			word = strings.TrimLeft(word, " ")
-		}
-
-		// пробел между словами (кроме сразу после открывающей кавычки)
-		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") && (!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
-			sb.WriteString(" ")
-		}
-
-		sb.WriteString(word)
-	}
-
-	return strings.TrimSpace(sb.String())
-}
 
 func isPunctuation(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	// Если строка состоит из нескольких одинаковых знаков пунктуации
+	if len(s) > 1 {
+		firstChar := rune(s[0])
+		for _, char := range s {
+			if char != firstChar {
+				return false
+			}
+		}
+		return isSinglePunctuation(string(firstChar))
+	}
+	return isSinglePunctuation(s)
+}
+
+func isSinglePunctuation(s string) bool {
 	return s == "." || s == "," || s == "!" || s == "?" || s == ":" || s == ";"
 }
