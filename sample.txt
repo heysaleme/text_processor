@@ -95,8 +95,6 @@ HELLO World
 done             (          up     , 1     )      
 done             (          up     ,  7      )  
 
-one two (cap, a (hex) (bin))
-One Two
 
 me (up, 10(bin))
 ME
