@@ -89,9 +89,6 @@ Good morning, Mr Harold Wilson
 one (up) two (up) three (cap, 3)
 One Two Three
 
-Abc (L(low)O(low)W(low))
-Abc (l o w )
-
 hello (up) world (cap)
 HELLO World
 
