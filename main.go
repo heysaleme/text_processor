@@ -74,53 +74,42 @@ func applyTransformations(tokens []string) []string {
 	return finalTokens
 }
 
-// Разделяет токены по строкам
-func splitTokensByLines(tokens []string) [][]string {
-	var lines [][]string
-	var currentLine []string
-
-	for _, token := range tokens {
-		currentLine = append(currentLine, token)
-		if token == "\n" {
-			lines = append(lines, currentLine)
-			currentLine = []string{}
-		}
-	}
-
-	// Добавляем последнюю строку, если она не пустая
-	if len(currentLine) > 0 {
-		lines = append(lines, currentLine)
-	}
-
-	return lines
-}
-
 func processLine(tokens []string) []string {
 	result := make([]string, len(tokens))
 	copy(result, tokens)
 
-	// Обрабатываем вложенные команды типа (LOW(low)) и (L(low)O(low)W(low))
-	for i := 0; i < len(result); i++ {
-		t := result[i]
-		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") && strings.Count(t, "(") > 1 {
-			// Это вложенная команда типа (LOW(low)) или (L(low)O(low)W(low))
-			processed := processNestedCommand(t)
-			if processed != "" {
-				result[i] = processed
+	// МНОГОПРОХОДНАЯ обработка вложенных команд - от самых глубоких к внешним
+	maxPasses := 5
+	for pass := 0; pass < maxPasses; pass++ {
+		changed := false
+		for i := 0; i < len(result); i++ {
+			t := result[i]
+			if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
+				depth := getBracketDepth(t)
+				if depth > 1 {
+					processed := processNestedCommand(t)
+					if processed != t {
+						result[i] = processed
+						changed = true
+					}
+				}
 			}
+		}
+		if !changed {
+			break
 		}
 	}
 
+	// Обрабатываем обычные команды (без вложенности)
 	commands := []struct {
 		index int
 		cmd   string
 		count int
 	}{}
 
-	// Собираем обычные команды (без вложенных)
 	for i := 0; i < len(result); i++ {
 		t := result[i]
-		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") && strings.Count(t, "(") == 1 {
+		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") && getBracketDepth(t) == 1 {
 			cmd, count := parseCommand(t)
 			if isValidCommand(cmd) {
 				commands = append(commands, struct {
@@ -191,55 +180,84 @@ func processLine(tokens []string) []string {
 	return finalResult
 }
 
+// Функция для определения глубины вложенности скобок
+func getBracketDepth(token string) int {
+	depth := 0
+	maxDepth := 0
+	for _, char := range token {
+		if char == '(' {
+			depth++
+			if depth > maxDepth {
+				maxDepth = depth
+			}
+		} else if char == ')' {
+			depth--
+		}
+	}
+	return maxDepth
+}
+
 func processNestedCommand(token string) string {
 	// Убираем внешние скобки
 	content := token[1 : len(token)-1]
-	var result strings.Builder
 
+	// Разбираем на внутренние команды и буквы
+	var parts []string
 	i := 0
 	for i < len(content) {
-		if i < len(content) && content[i] == '(' {
-			// Находим закрывающую скобку команды
-			end := i + 1
+		if content[i] == '(' {
+			// Находим закрывающую скобку для команды
 			depth := 1
-			for end < len(content) && depth > 0 {
-				if content[end] == '(' {
+			j := i + 1
+			for j < len(content) && depth > 0 {
+				if content[j] == '(' {
 					depth++
-				} else if content[end] == ')' {
+				} else if content[j] == ')' {
 					depth--
 				}
-				end++
+				j++
 			}
-
-			if end > len(content) {
-				break
-			}
-
-			// Извлекаем команду
-			cmdStr := content[i+1 : end-1]
-			cmdParts := strings.Split(cmdStr, ",")
-			cmd := strings.TrimSpace(cmdParts[0])
-
-			// Буква перед командой
-			if i > 0 && unicode.IsLetter(rune(content[i-1])) {
-				char := string(content[i-1])
-				transformed := applyCommandToChar(char, cmd)
-				result.WriteString(transformed)
-				result.WriteString(" ")
-			}
-
-			i = end
+			command := content[i:j]
+			parts = append(parts, command)
+			i = j
 		} else if unicode.IsLetter(rune(content[i])) {
-			// Буква без команды
-			result.WriteString(strings.ToLower(string(content[i])))
-			result.WriteString(" ")
+			// Добавляем отдельную букву
+			parts = append(parts, string(content[i]))
 			i++
 		} else {
+			// Пропускаем пробелы и другие символы
 			i++
 		}
 	}
 
-	return "(" + strings.TrimSpace(result.String()) + ")"
+	// Обрабатываем части справа налево (от внутренних к внешним)
+	for i := len(parts) - 1; i >= 0; i-- {
+		if strings.HasPrefix(parts[i], "(") && strings.HasSuffix(parts[i], ")") {
+			// Это команда - применяем ее к следующему элементу (если есть)
+			if i+1 < len(parts) && len(parts[i+1]) == 1 && unicode.IsLetter(rune(parts[i+1][0])) {
+				cmd, _ := parseCommand(parts[i])
+				if isValidCommand(cmd) {
+					parts[i+1] = applyCommandToChar(parts[i+1], cmd)
+					parts[i] = "" // Удаляем обработанную команду
+				}
+			}
+		}
+	}
+
+	// Собираем результат
+	var result strings.Builder
+	for _, part := range parts {
+		if part != "" {
+			result.WriteString(part)
+			result.WriteString(" ")
+		}
+	}
+
+	output := strings.TrimSpace(result.String())
+	if output == "" {
+		return token
+	}
+	return "(" + output + ")"
 }
 
 func applyCommandToChar(char string, cmd string) string {
@@ -249,9 +267,9 @@ func applyCommandToChar(char string, cmd string) string {
 	case "up":
 		return strings.ToUpper(char)
 	case "cap":
-		return strings.ToUpper(char)
+		return strings.ToUpper(char) // Для одной буквы cap = up
 	default:
-		return strings.ToLower(char)
+		return char
 	}
 }
 
@@ -363,6 +381,7 @@ func processText(text string) string {
 
 func reconstruct(tokens []string) string {
 	var sb strings.Builder
+	insideQuotes := false
 
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
@@ -393,13 +412,14 @@ func reconstruct(tokens []string) string {
 			continue
 		}
 
-		// Обрабатываем только сокращения
+		// Обрабатываем апострофы для сокращений
 		if t == "'" && i > 0 && i+1 < len(tokens) {
 			prevToken := tokens[i-1]
 			nextToken := tokens[i+1]
 
-			if isWordToken(prevToken) && isShortWord(nextToken) {
-				// Объединяем сокращение
+			// СПЕЦИАЛЬНЫЕ СЛУЧАИ СОКРАЩЕНИЙ
+			if isWordToken(prevToken) && isContractionWord(nextToken) {
+				// Это сокращение - объединяем без пробелов
 				sb.WriteString("'")
 				i++
 				sb.WriteString(tokens[i])
@@ -407,14 +427,47 @@ func reconstruct(tokens []string) string {
 			}
 		}
 
-		// обычное слово или кавычка
-		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
+		// кавычки
+		if t == "'" {
+			if insideQuotes {
+				// закрывающая кавычка - убираем пробел перед ней
+				s := sb.String()
+				if strings.HasSuffix(s, " ") {
+					sb.Reset()
+					sb.WriteString(strings.TrimRight(s, " "))
+				}
+				sb.WriteString("'")
+				insideQuotes = false
+			} else {
+				// открывающая кавычка - пробел перед ней
+				if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") {
+					sb.WriteString(" ")
+				}
+				sb.WriteString("'")
+				insideQuotes = true
+			}
+			continue
+		}
+
+		// обычное слово
+		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") && (!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
 			sb.WriteString(" ")
 		}
 		sb.WriteString(t)
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+// Функция для определения слов-сокращений
+func isContractionWord(word string) bool {
+	contractions := map[string]bool{
+		// Основные сокращения
+		"t": true, "s": true, "m": true, "re": true, "ve": true, "ll": true, "d": true,
+		// Дополнительные распространенные сокращения
+		"em": true, "til": true, "bout": true, "cause": true, "round": true,
+	}
+	return contractions[strings.ToLower(word)]
 }
 
 func isShortWord(word string) bool {
@@ -426,17 +479,19 @@ func isShortWord(word string) bool {
 
 func parseCommand(token string) (cmd string, count int) {
 	token = strings.Trim(token, "()")
-
-	// Игнорируем только команды с ВЛОЖЕННЫМИ скобками
-	if strings.Count(token, "(") > 0 || strings.Count(token, ")") > 0 {
-		return "", 0
-	}
+	token = strings.Join(strings.Fields(token), " ")
 
 	parts := strings.Split(token, ",")
 	cmd = strings.TrimSpace(parts[0])
 	count = 1
+
 	if len(parts) > 1 {
-		if c, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+		countStr := strings.TrimSpace(parts[1])
+		// Если параметр содержит скобки - это вложенная команда, игнорируем
+		if strings.Contains(countStr, "(") || strings.Contains(countStr, ")") {
+			// Для случаев типа (up, 10(bin)) - используем count = 1
+			count = 1
+		} else if c, err := strconv.Atoi(countStr); err == nil {
 			count = c
 		}
 	}
@@ -453,4 +508,24 @@ func isPunctuation(s string) bool {
 		}
 	}
 	return len(s) > 0
+}
+
+// Функция для разделения строк по строкам (отсутствует в вашем коде)
+func splitTokensByLines(tokens []string) [][]string {
+	var lines [][]string
+	var currentLine []string
+
+	for _, token := range tokens {
+		currentLine = append(currentLine, token)
+		if token == "\n" {
+			lines = append(lines, currentLine)
+			currentLine = []string{}
+		}
+	}
+
+	if len(currentLine) > 0 {
+		lines = append(lines, currentLine)
+	}
+
+	return lines
 }
