@@ -34,7 +34,6 @@ func main() {
 		return
 	}
 
-	fmt.Println("✅ Result written to", outputFile)
 }
 
 func isWordToken(s string) bool {
@@ -108,7 +107,6 @@ func combineCommandTokens(tokens []string) []string {
 		}
 	}
 
-	fmt.Printf("🔧 COMBINED TOKENS: %v\n", result)
 	return result
 }
 func isValidCommand(cmd string) bool {
@@ -123,30 +121,24 @@ func processLine(tokens []string) []string {
 	result := make([]string, len(tokens))
 	copy(result, tokens)
 
-	fmt.Printf("🚀 START processLine: %v\n", tokens)
-
 	// МНОГОПРОХОДНАЯ обработка вложенных команд - от самых глубоких к внешним
 	maxPasses := 5
 	for pass := 0; pass < maxPasses; pass++ {
-		fmt.Printf("🔄 PASS %d\n", pass+1)
 		changed := false
 		for i := 0; i < len(result); i++ {
 			t := result[i]
 			if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
 				depth := getBracketDepth(t)
 				if depth > 1 {
-					fmt.Printf("  Processing token[%d]: %s (depth: %d)\n", i, t, depth)
 					processed := processNestedCommand(t)
 					if processed != t {
 						result[i] = processed
 						changed = true
-						fmt.Printf("  CHANGED: %s -> %s\n", t, processed)
 					}
 				}
 			}
 		}
 		if !changed {
-			fmt.Printf("  No changes in pass %d, breaking\n", pass+1)
 			break
 		}
 	}
@@ -249,7 +241,6 @@ func getBracketDepth(token string) int {
 }
 
 func processNestedCommand(token string) string {
-	fmt.Printf("🔍 processNestedCommand INPUT: %s\n", token)
 
 	content := token[1 : len(token)-1]
 
@@ -275,72 +266,58 @@ func processNestedCommand(token string) string {
 		}
 	}
 
-	fmt.Printf("   innerStart: %d, innerEnd: %d\n", innerStart, innerEnd)
-
 	// Если нашли внутреннюю команду
 	if innerStart != -1 && innerEnd != -1 {
 		innerCommand := content[innerStart : innerEnd+1]
 		innerCmd, _ := parseCommand(innerCommand)
-		fmt.Printf("   Found inner command: %s -> %s\n", innerCommand, innerCmd)
 
 		if isValidCommand(innerCmd) {
 			// Ищем команду ПЕРЕД внутренней командой (внешнюю команду)
 			beforeCommand := strings.TrimSpace(content[:innerStart])
-			fmt.Printf("   beforeCommand: '%s'\n", beforeCommand)
 
 			if beforeCommand != "" {
 				// Применяем внутреннюю команду к внешней команде
 				transformed := applyCommandToWord(beforeCommand, innerCmd)
-				fmt.Printf("   transformed: '%s'\n", transformed)
 
 				// Собираем новый контент
 				newContent := transformed + content[innerEnd+1:]
 				result := "(" + strings.TrimSpace(newContent) + ")"
-				fmt.Printf("   OUTPUT: %s\n", result)
 				return result
 			}
 
 			// Ищем команду ПОСЛЕ внутренней команды
 			afterCommand := strings.TrimSpace(content[innerEnd+1:])
-			fmt.Printf("   afterCommand: '%s'\n", afterCommand)
 
 			if afterCommand != "" {
 				// Применяем внутреннюю команду к команде после
 				transformed := applyCommandToWord(afterCommand, innerCmd)
-				fmt.Printf("   transformed: '%s'\n", transformed)
 
 				// Собираем новый контент
 				newContent := content[:innerStart] + transformed
 				result := "(" + strings.TrimSpace(newContent) + ")"
-				fmt.Printf("   OUTPUT: %s\n", result)
 				return result
 			}
 		}
 	}
 
-	fmt.Printf("   NO CHANGES, OUTPUT: %s\n", token)
 	return token
 }
 
 // Применяет команду к слову (уже существует)
 func applyCommandToWord(word string, cmd string) string {
-	fmt.Printf("   applyCommandToWord: '%s' with cmd '%s'\n", word, cmd)
 
 	// Если word - это команда (в скобках), парсим её
 	if strings.HasPrefix(word, "(") && strings.HasSuffix(word, ")") {
 		cmdContent := word[1 : len(word)-1]
 		parsedCmd, _ := parseCommand("(" + cmdContent + ")")
-		fmt.Printf("   It's a command, parsedCmd: '%s'\n", parsedCmd)
 
 		// Применяем команду cmd к parsedCmd
 		switch strings.ToLower(cmd) {
 		case "up":
 			result := "(" + strings.ToUpper(parsedCmd) + ")"
-			fmt.Printf("   Result: %s\n", result)
 			return result
 		case "low":
 			result := "(" + strings.ToLower(parsedCmd) + ")"
-			fmt.Printf("   Result: %s\n", result)
 			return result
 		case "cap":
 			if len(parsedCmd) > 0 {
@@ -350,7 +327,6 @@ func applyCommandToWord(word string, cmd string) string {
 					runes[k] = unicode.ToLower(runes[k])
 				}
 				result := "(" + string(runes) + ")"
-				fmt.Printf("   Result: %s\n", result)
 				return result
 			}
 		}
@@ -473,8 +449,6 @@ func processText(text string) string {
 	// Улучшенное регулярное выражение для вложенных скобок
 	re := regexp.MustCompile(`\([^()]*(?:\([^()]*\)[^()]*)*\)|\n|'|[\w]+|\.\.\.|[!?]{2,}|[.,!?:;]`)
 	tokens := re.FindAllString(text, -1)
-
-	fmt.Printf("📝 TOKENS: %v\n", tokens)
 
 	tokens = fixArticles(tokens)
 	tokens = applyTransformations(tokens)
