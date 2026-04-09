@@ -526,10 +526,15 @@ func reconstruct(tokens []string) string {
 		}
 
 		// обычное слово
-		if sb.Len() > 0 && !strings.HasSuffix(sb.String(), " ") && (!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
+		current := sb.String()
+		if sb.Len() > 0 &&
+			!strings.HasSuffix(current, " ") &&
+			!strings.HasSuffix(current, "\n") &&
+			(!insideQuotes || (insideQuotes && i > 0 && tokens[i-1] != "'")) {
 			sb.WriteString(" ")
 		}
 		sb.WriteString(t)
+
 	}
 
 	return strings.TrimSpace(sb.String())
